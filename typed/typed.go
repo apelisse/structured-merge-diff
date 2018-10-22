@@ -17,6 +17,7 @@ limitations under the License.
 package typed
 
 import (
+	"fmt"
 	"reflect"
 
 	"sigs.k8s.io/structured-merge-diff/fieldpath"
@@ -108,6 +109,18 @@ type Comparison struct {
 // compared objects are similar).
 func (c *Comparison) IsSame() bool {
 	return c.Removed.Empty() && c.Modified.Empty() && c.Added.Empty()
+}
+
+// String returns a human readable version of the comparison.
+func (c *Comparison) String() string {
+	return fmt.Sprintf(`Merged:
+%v
+- Modified:
+%v
+- Added:
+%v
+- Removed:
+%v`, c.Merged.AsValue().HumanReadable(), c.Modified, c.Added, c.Removed)
 }
 
 // Compare compares the two objects. See the comments on the `Comparison`
