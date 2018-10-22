@@ -95,6 +95,14 @@ func (s *State) CompareLive(obj typed.YAMLObject) (*typed.Comparison, error) {
 	return s.Live.Compare(tv)
 }
 
+// DummyConverter doesn't convert, it just returns the same exact object no matter what.
+type DummyConverter struct{}
+
+// Convert returns the object given in input, not doing any conversion.
+func (DummyConverter) Convert(v typed.TypedValue, version merge.APIVersion) (typed.TypedValue, error) {
+	return v, nil
+}
+
 // TestExample shows how to use the test framework
 func TestExample(t *testing.T) {
 	parser, err := typed.NewParser(`types:
