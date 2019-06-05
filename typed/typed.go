@@ -113,7 +113,7 @@ func (tv TypedValue) Compare(rhs *TypedValue) (c *Comparison, err error) {
 		Modified: fieldpath.NewSet(),
 		Added:    fieldpath.NewSet(),
 	}
-	c.Merged, err = merge(&tv, rhs, func(w *mergingWalker) {
+	_, err = merge(&tv, rhs, func(w *mergingWalker) {
 		if w.lhs == nil {
 			c.Added.Insert(w.path)
 		} else if w.rhs == nil {
@@ -123,8 +123,6 @@ func (tv TypedValue) Compare(rhs *TypedValue) (c *Comparison, err error) {
 			// Need to implement equality check on the value type.
 			c.Modified.Insert(w.path)
 		}
-
-		ruleKeepRHS(w)
 	}, func(w *mergingWalker) {
 		if w.lhs == nil {
 			c.Added.Insert(w.path)
@@ -244,10 +242,6 @@ func merge(lhs, rhs *TypedValue, rule, postRule mergeRule) (*TypedValue, error) 
 // No field will appear in more than one of the three fieldsets. If all of the
 // fieldsets are empty, then the objects must have been equal.
 type Comparison struct {
-	// Merged is the result of merging the two objects, as explained in the
-	// comments on TypedValue.Merge().
-	Merged *TypedValue
-
 	// Removed contains any fields removed by rhs (the right-hand-side
 	// object in the comparison).
 	Removed *fieldpath.Set
@@ -265,7 +259,7 @@ func (c *Comparison) IsSame() bool {
 
 // String returns a human readable version of the comparison.
 func (c *Comparison) String() string {
-	str := fmt.Sprintf("- Merged Object:\n%v\n", c.Merged.AsValue())
+	str := ""
 	if !c.Modified.Empty() {
 		str += fmt.Sprintf("- Modified Fields:\n%v\n", c.Modified)
 	}
