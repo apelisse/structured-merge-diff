@@ -189,10 +189,10 @@ func (fs fieldsSet) String() string {
 }
 
 type union struct {
-	deduceInvalidDiscriminator bool
-	d                          *discriminator
-	dn                         discriminatedNames
-	f                          []field
+	deduceDiscriminator bool
+	d                   *discriminator
+	dn                  discriminatedNames
+	f                   []field
 }
 
 func newUnion(su *schema.Union) *union {
@@ -206,7 +206,7 @@ func newUnion(su *schema.Union) *union {
 		f2d[field(f.FieldName)] = discriminated(f.DiscriminatorValue)
 	}
 	u.dn = newDiscriminatedName(f2d)
-	u.deduceInvalidDiscriminator = su.DeduceInvalidDiscriminator
+	u.deduceDiscriminator = su.DeduceDiscriminator
 	return u
 }
 
@@ -241,7 +241,7 @@ func (u *union) Normalize(old, new, out *value.Map) error {
 	}
 
 	// Update discriminiator if it needs to be deduced.
-	if u.deduceInvalidDiscriminator && len(ns) == 1 {
+	if u.deduceDiscriminator && len(ns) == 1 {
 		u.d.Set(out, u.dn.toDiscriminated(*ns.One()))
 	}
 
@@ -263,7 +263,7 @@ func (u *union) NormalizeApply(applied, merged, out *value.Map) error {
 	}
 
 	// Update discriminiator if needed
-	if u.deduceInvalidDiscriminator {
+	if u.deduceDiscriminator {
 		u.d.Set(out, u.dn.toDiscriminated(*as.One()))
 	}
 	// Clear others fields.

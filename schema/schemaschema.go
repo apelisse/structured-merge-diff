@@ -105,7 +105,7 @@ var SchemaSchemaYAML = `types:
     - name: discriminator
       type:
         scalar: string
-    - name: deduceInvalidDiscriminator
+    - name: deduceDiscriminator
       type:
         scalar: bool
     - name: fields

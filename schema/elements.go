@@ -148,12 +148,12 @@ type Union struct {
 	// below.
 	Discriminator *string `yaml:"discriminator,omitempty"`
 
-	// DeduceInvalidDiscriminator indicates if the discriminator
-	// should be updated automatically based on the fields set. This
-	// typically defaults to false since we don't want to deduce by
-	// default (the behavior exists to maintain compatibility on
-	// existing types and shouldn't be used for new types).
-	DeduceInvalidDiscriminator bool `yaml:"deduceInvalidDiscriminator,omitempty"`
+	// DeduceDiscriminator indicates if the discriminator should be
+	// updated automatically based on the fields set. This typically
+	// defaults to false since we don't want to deduce by default
+	// (the behavior exists to maintain compatibility on existing
+	// types and shouldn't be used for new types).
+	DeduceDiscriminator bool `yaml:"deduceDiscriminator,omitempty"`
 
 	// This is the list of fields that belong to this union. All the
 	// fields present in here have to be part of the parent

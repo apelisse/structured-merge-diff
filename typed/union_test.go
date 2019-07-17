@@ -50,7 +50,7 @@ var unionParser = func() typed.ParseableType {
         scalar: numeric
     unions:
     - discriminator: discriminator
-      deduceInvalidDiscriminator: true
+      deduceDiscriminator: true
       fields:
       - fieldName: one
         discriminatorValue: One
