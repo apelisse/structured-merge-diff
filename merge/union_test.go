@@ -90,6 +90,29 @@ func TestUnion(t *testing.T) {
 				),
 			},
 		},
+		"union_apply_dont_set_nondeduced_discriminator": {
+			Ops: []Operation{
+				Apply{
+					Manager:    "default",
+					APIVersion: "v1",
+					Object: `
+						fieldA: "value"
+					`,
+				},
+			},
+			Object: `
+				fieldA: "value"
+			`,
+			Managed: fieldpath.ManagedFields{
+				"default": fieldpath.NewVersionedSet(
+					_NS(
+						_P("fieldA"),
+					),
+					"v1",
+					false,
+				),
+			},
+		},
 		"union_apply_without_discriminator_conflict": {
 			Ops: []Operation{
 				Update{

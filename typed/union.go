@@ -34,12 +34,8 @@ func normalizeUnions(w *mergingWalker) error {
 		return nil
 	}
 
-	old := &value.Map{}
-	if w.lhs != nil {
-		old = w.lhs.MapValue
-	}
 	for _, union := range atom.Map.Unions {
-		if err := newUnion(&union).Normalize(old, w.rhs.MapValue, w.out.MapValue); err != nil {
+		if err := newUnion(&union).Normalize(w.out.MapValue); err != nil {
 			return err
 		}
 	}
@@ -52,16 +48,12 @@ func normalizeUnionsApply(w *mergingWalker) error {
 		panic(fmt.Sprintf("Unable to resolve schema in normalize union: %v/%v", w.schema, w.typeRef))
 	}
 	// Unions can only be in structures, and the struct must not have been removed
-	if atom.Map == nil || w.out == nil {
+	if atom.Map == nil || w.out == nil || w.rhs == nil {
 		return nil
 	}
 
-	old := &value.Map{}
-	if w.lhs != nil {
-		old = w.lhs.MapValue
-	}
 	for _, union := range atom.Map.Unions {
-		if err := newUnion(&union).NormalizeApply(old, w.rhs.MapValue, w.out.MapValue); err != nil {
+		if err := newUnion(&union).NormalizeApply(w.rhs.MapValue, w.out.MapValue); err != nil {
 			return err
 		}
 	}
@@ -220,41 +212,30 @@ func (u *union) clear(m *value.Map, f field) {
 	}
 }
 
-func (u *union) Normalize(old, new, out *value.Map) error {
-	os := newFieldsSet(old, u.f)
-	ns := newFieldsSet(new, u.f)
-	diff := ns.Difference(os)
-
-	if u.d.Get(old) != u.d.Get(new) && u.d.Get(new) != "" {
-		if len(diff) == 1 && u.d.Get(new) != u.dn.toDiscriminated(*diff.One()) {
-			return fmt.Errorf("discriminator (%v) and field changed (%v) don't match", u.d.Get(new), diff.One())
+func (u *union) Normalize(m *value.Map) error {
+	if u.deduceDiscriminator {
+		ns := newFieldsSet(m, u.f)
+		if len(ns) > 1 {
+			return fmt.Errorf("multiple fields set in union: %v", ns)
 		}
-		if len(diff) > 1 {
-			return fmt.Errorf("multiple new fields added: %v", diff)
+		// If one is set, update discriminator
+		if len(ns) == 1 {
+			u.d.Set(m, u.dn.toDiscriminated(*ns.One()))
 		}
-		u.clear(out, u.dn.toField(u.d.Get(new)))
-		return nil
-	}
-
-	if len(ns) > 1 {
-		return fmt.Errorf("multiple fields set without discriminator change: %v", ns)
-	}
-
-	// Update discriminiator if it needs to be deduced.
-	if u.deduceDiscriminator && len(ns) == 1 {
-		u.d.Set(out, u.dn.toDiscriminated(*ns.One()))
+	} else if u.d.Get(m) != "" {
+		u.clear(m, u.dn.toField(u.d.Get(m)))
 	}
 
 	return nil
 }
 
-func (u *union) NormalizeApply(applied, merged, out *value.Map) error {
+func (u *union) NormalizeApply(applied *value.Map, out *value.Map) error {
 	as := newFieldsSet(applied, u.f)
 	if len(as) > 1 {
 		return fmt.Errorf("more than one field of union applied: %v", as)
 	}
-	if len(as) == 0 {
-		// None is set, just leave.
+	if len(as) == 0 && u.d.Get(applied) == "" {
+		// None is set and no discriminator, just leave
 		return nil
 	}
 	// We have exactly one, discriminiator must match if set
@@ -263,7 +244,7 @@ func (u *union) NormalizeApply(applied, merged, out *value.Map) error {
 	}
 
 	// Update discriminiator if needed
-	if u.deduceDiscriminator {
+	if u.deduceDiscriminator && u.d.Get(applied) == "" {
 		u.d.Set(out, u.dn.toDiscriminated(*as.One()))
 	}
 	// Clear others fields.

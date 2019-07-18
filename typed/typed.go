@@ -154,18 +154,17 @@ func (tv TypedValue) RemoveItems(items *fieldpath.Set) *TypedValue {
 // - If discriminator changed to non-nil, all other fields but the
 // discriminated one will be cleared,
 // - Otherwise, If only one field is left, update discriminator to that value.
-func (tv TypedValue) NormalizeUnions(new *TypedValue) (*TypedValue, error) {
+func (tv TypedValue) NormalizeUnions() (*TypedValue, error) {
 	var errs ValidationErrors
 	var normalizeFn = func(w *mergingWalker) {
-		if w.rhs != nil {
-			v := *w.rhs
-			w.out = &v
+		if w.lhs != nil {
+			w.out = w.lhs
 		}
 		if err := normalizeUnions(w); err != nil {
 			errs = append(errs, w.error(err)...)
 		}
 	}
-	out, mergeErrs := merge(&tv, new, func(w *mergingWalker) {}, normalizeFn)
+	out, mergeErrs := merge(&tv, &tv, func(w *mergingWalker) {}, normalizeFn)
 	if mergeErrs != nil {
 		errs = append(errs, mergeErrs.(ValidationErrors)...)
 	}
@@ -178,18 +177,17 @@ func (tv TypedValue) NormalizeUnions(new *TypedValue) (*TypedValue, error) {
 // NormalizeUnionsApply specifically normalize unions on apply. It
 // validates that the applied union is correct (there should be no
 // ambiguity there), and clear the fields according to the sent intent.
-func (tv TypedValue) NormalizeUnionsApply(new *TypedValue) (*TypedValue, error) {
+func (tv TypedValue) NormalizeUnionsApply(applied *TypedValue) (*TypedValue, error) {
 	var errs ValidationErrors
 	var normalizeFn = func(w *mergingWalker) {
-		if w.rhs != nil {
-			v := *w.rhs
-			w.out = &v
+		if w.lhs != nil {
+			w.out = w.lhs
 		}
 		if err := normalizeUnionsApply(w); err != nil {
 			errs = append(errs, w.error(err)...)
 		}
 	}
-	out, mergeErrs := merge(&tv, new, func(w *mergingWalker) {}, normalizeFn)
+	out, mergeErrs := merge(&tv, applied, func(w *mergingWalker) {}, normalizeFn)
 	if mergeErrs != nil {
 		errs = append(errs, mergeErrs.(ValidationErrors)...)
 	}

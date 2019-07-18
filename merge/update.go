@@ -112,7 +112,7 @@ func (s *Updater) update(oldObject, newObject *typed.TypedValue, version fieldpa
 // PATCH call), and liveObject must be the original object (empty if
 // this is a CREATE call).
 func (s *Updater) Update(liveObject, newObject *typed.TypedValue, version fieldpath.APIVersion, managers fieldpath.ManagedFields, manager string) (*typed.TypedValue, fieldpath.ManagedFields, error) {
-	newObject, err := liveObject.NormalizeUnions(newObject)
+	newObject, err := newObject.NormalizeUnions()
 	if err != nil {
 		return nil, fieldpath.ManagedFields{}, err
 	}
@@ -152,7 +152,7 @@ func (s *Updater) Apply(liveObject, configObject *typed.TypedValue, version fiel
 	if err != nil {
 		return nil, fieldpath.ManagedFields{}, fmt.Errorf("failed to merge config: %v", err)
 	}
-	newObject, err = configObject.NormalizeUnionsApply(newObject)
+	newObject, err = newObject.NormalizeUnionsApply(configObject)
 	if err != nil {
 		return nil, fieldpath.ManagedFields{}, err
 	}
