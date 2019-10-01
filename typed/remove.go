@@ -70,7 +70,7 @@ func (w *removingWalker) doList(t schema.List) (errs ValidationErrors) {
 	return nil
 }
 
-func (w *removingWalker) doMap(t schema.Map) ValidationErrors {
+func (w *removingWalker) doMap(t *schema.Map) ValidationErrors {
 	m := w.value.MapValue
 
 	// If map is null, empty, or atomic just return

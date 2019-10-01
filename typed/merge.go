@@ -280,23 +280,15 @@ func (w *mergingWalker) doList(t schema.List) (errs ValidationErrors) {
 	return errs
 }
 
-func (w *mergingWalker) visitMapItems(t schema.Map, lhs, rhs *value.Map) (errs ValidationErrors) {
+func (w *mergingWalker) visitMapItems(t *schema.Map, lhs, rhs *value.Map) (errs ValidationErrors) {
 	out := &value.Map{}
-
-	fieldTypes := map[string]schema.TypeRef{}
-	for i := range t.Fields {
-		// I don't want to use the loop variable since a reference
-		// might outlive the loop iteration (in an error message).
-		f := t.Fields[i]
-		fieldTypes[f.Name] = f.Type
-	}
 
 	if lhs != nil {
 		for i := range lhs.Items {
 			litem := &lhs.Items[i]
-			fieldType := t.ElementType
-			if ft, ok := fieldTypes[litem.Name]; ok {
-				fieldType = ft
+			fieldType, ok := t.FindType(litem.Name)
+			if !ok {
+				fieldType = t.ElementType
 			}
 			w2 := w.prepareDescent(fieldpath.PathElement{FieldName: &litem.Name}, fieldType)
 			w2.lhs = &litem.Value
@@ -323,9 +315,9 @@ func (w *mergingWalker) visitMapItems(t schema.Map, lhs, rhs *value.Map) (errs V
 				}
 			}
 
-			fieldType := t.ElementType
-			if ft, ok := fieldTypes[ritem.Name]; ok {
-				fieldType = ft
+			fieldType, ok := t.FindType(ritem.Name)
+			if !ok {
+				fieldType = t.ElementType
 			}
 			w2 := w.prepareDescent(fieldpath.PathElement{FieldName: &ritem.Name}, fieldType)
 			w2.rhs = &ritem.Value
@@ -344,7 +336,7 @@ func (w *mergingWalker) visitMapItems(t schema.Map, lhs, rhs *value.Map) (errs V
 	return errs
 }
 
-func (w *mergingWalker) doMap(t schema.Map) (errs ValidationErrors) {
+func (w *mergingWalker) doMap(t *schema.Map) (errs ValidationErrors) {
 	var lhs, rhs *value.Map
 	w.derefMap("lhs: ", w.lhs, &lhs)
 	w.derefMap("rhs: ", w.rhs, &rhs)

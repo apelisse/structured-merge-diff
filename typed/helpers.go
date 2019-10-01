@@ -99,7 +99,7 @@ func (ef errorFormatter) prefixError(prefix string, err error) ValidationErrors 
 type atomHandler interface {
 	doScalar(schema.Scalar) ValidationErrors
 	doList(schema.List) ValidationErrors
-	doMap(schema.Map) ValidationErrors
+	doMap(*schema.Map) ValidationErrors
 
 	errorf(msg string, args ...interface{}) ValidationErrors
 }
@@ -130,7 +130,7 @@ func deduceAtom(a schema.Atom, v *value.Value) schema.Atom {
 func handleAtom(a schema.Atom, tr schema.TypeRef, ah atomHandler) ValidationErrors {
 	switch {
 	case a.Map != nil:
-		return ah.doMap(*a.Map)
+		return ah.doMap(a.Map)
 	case a.Scalar != nil:
 		return ah.doScalar(*a.Scalar)
 	case a.List != nil:

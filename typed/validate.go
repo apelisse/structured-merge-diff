@@ -186,20 +186,12 @@ func (v *validatingObjectWalker) doList(t schema.List) (errs ValidationErrors) {
 	return errs
 }
 
-func (v *validatingObjectWalker) visitMapItems(t schema.Map, m *value.Map) (errs ValidationErrors) {
-	fieldTypes := map[string]schema.TypeRef{}
-	for i := range t.Fields {
-		// I don't want to use the loop variable since a reference
-		// might outlive the loop iteration (in an error message).
-		f := t.Fields[i]
-		fieldTypes[f.Name] = f.Type
-	}
-
+func (v *validatingObjectWalker) visitMapItems(t *schema.Map, m *value.Map) (errs ValidationErrors) {
 	for i := range m.Items {
 		item := &m.Items[i]
 		pe := fieldpath.PathElement{FieldName: &item.Name}
 
-		if tr, ok := fieldTypes[item.Name]; ok {
+		if tr, ok := t.FindType(item.Name); ok {
 			v2 := v.prepareDescent(pe, tr)
 			v2.value = item.Value
 			errs = append(errs, v2.validate()...)
@@ -215,7 +207,7 @@ func (v *validatingObjectWalker) visitMapItems(t schema.Map, m *value.Map) (errs
 	return errs
 }
 
-func (v *validatingObjectWalker) doMap(t schema.Map) (errs ValidationErrors) {
+func (v *validatingObjectWalker) doMap(t *schema.Map) (errs ValidationErrors) {
 	m, err := mapValue(v.value)
 	if err != nil {
 		return v.error(err)
