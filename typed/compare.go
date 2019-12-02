@@ -17,38 +17,28 @@ limitations under the License.
 package typed
 
 import (
-	"math"
-
 	"sigs.k8s.io/structured-merge-diff/v2/fieldpath"
 	"sigs.k8s.io/structured-merge-diff/v2/schema"
 	"sigs.k8s.io/structured-merge-diff/v2/value"
 )
 
-type mergingWalker struct {
+type compareWalker struct {
 	lhs     value.Value
 	rhs     value.Value
 	schema  *schema.Schema
 	typeRef schema.TypeRef
 
-	// output of the merge operation (nil if none)
-	out *interface{}
+	comparison *Comparison
+
+	// Current path that we are merging
+	path fieldpath.Path
 
 	// Allocate only as many walkers as needed for the depth by storing them here.
-	spareWalkers *[]*mergingWalker
-}
-
-func (w *mergingWalker) keepRHS() {
-	if w.rhs != nil {
-		v := w.rhs.Unstructured()
-		w.out = &v
-	} else if w.lhs != nil {
-		v := w.lhs.Unstructured()
-		w.out = &v
-	}
+	spareWalkers *[]*compareWalker
 }
 
 // merge sets w.out.
-func (w *mergingWalker) merge(prefixFn func() string) (errs ValidationErrors) {
+func (w *compareWalker) compare() (errs ValidationErrors) {
 	if w.lhs == nil && w.rhs == nil {
 		// check this condidition here instead of everywhere below.
 		return errorf("at least one of lhs and rhs must be provided")
@@ -63,59 +53,65 @@ func (w *mergingWalker) merge(prefixFn func() string) (errs ValidationErrors) {
 	if alhs.Equals(arhs) {
 		errs = append(errs, handleAtom(arhs, w.typeRef, w)...)
 	} else {
-		w2 := *w
-		errs = append(errs, handleAtom(alhs, w.typeRef, &w2)...)
+		errs = append(errs, handleAtom(alhs, w.typeRef, w)...)
 		errs = append(errs, handleAtom(arhs, w.typeRef, w)...)
 	}
 
-	return errs.WithLazyPrefix(prefixFn)
+	if w.lhs == nil {
+		w.comparison.Added.Insert(w.path)
+	} else if w.rhs == nil {
+		w.comparison.Removed.Insert(w.path)
+	}
+	return errs
 }
 
 // doLeaf should be called on leaves before descending into children, if there
 // will be a descent. It modifies w.inLeaf.
-func (w *mergingWalker) doLeaf() {
-	w.keepRHS()
+func (w *compareWalker) doLeaf() {
+	// We don't recurse into leaf fields for merging.
+	if w.lhs == nil {
+		w.comparison.Added.Insert(w.path)
+	} else if w.rhs == nil {
+		w.comparison.Removed.Insert(w.path)
+	} else if !value.Equals(w.rhs, w.lhs) {
+		// TODO: Equality is not sufficient for this.
+		// Need to implement equality check on the value type.
+		w.comparison.Modified.Insert(w.path)
+	}
 }
 
-func (w *mergingWalker) doScalar(t *schema.Scalar) (errs ValidationErrors) {
-	errs = append(errs, validateScalar(t, w.lhs, "lhs: ")...)
-	errs = append(errs, validateScalar(t, w.rhs, "rhs: ")...)
-	if len(errs) > 0 {
-		return errs
-	}
-
+func (w *compareWalker) doScalar(t *schema.Scalar) (errs ValidationErrors) {
 	// All scalars are leaf fields.
 	w.doLeaf()
 
 	return nil
 }
 
-func (w *mergingWalker) prepareDescent(tr schema.TypeRef) *mergingWalker {
+func (w *compareWalker) prepareDescent(pe fieldpath.PathElement, tr schema.TypeRef) *compareWalker {
 	if w.spareWalkers == nil {
 		// first descent.
-		w.spareWalkers = &[]*mergingWalker{}
+		w.spareWalkers = &[]*compareWalker{}
 	}
-	var w2 *mergingWalker
+	var w2 *compareWalker
 	if n := len(*w.spareWalkers); n > 0 {
 		w2, *w.spareWalkers = (*w.spareWalkers)[n-1], (*w.spareWalkers)[:n-1]
 	} else {
-		w2 = &mergingWalker{}
+		w2 = &compareWalker{}
 	}
 	*w2 = *w
 	w2.typeRef = tr
+	w2.path = append(w2.path, pe)
 	w2.lhs = nil
 	w2.rhs = nil
-	w2.out = nil
 	return w2
 }
 
-func (w *mergingWalker) finishDescent(w2 *mergingWalker) {
-	// if the descent caused a realloc, ensure that we reuse the buffer
-	// for the next sibling.
+func (w *compareWalker) finishDescent(w2 *compareWalker) {
+	w.path = w2.path[:len(w2.path)-1]
 	*w.spareWalkers = append(*w.spareWalkers, w2)
 }
 
-func (w *mergingWalker) derefMap(prefix string, v value.Value, dest *value.Map) (errs ValidationErrors) {
+func (w *compareWalker) derefMap(prefix string, v value.Value, dest *value.Map) (errs ValidationErrors) {
 	// taking dest as input so that it can be called as a one-liner with
 	// append.
 	if v == nil {
@@ -129,7 +125,7 @@ func (w *mergingWalker) derefMap(prefix string, v value.Value, dest *value.Map) 
 	return nil
 }
 
-func (w *mergingWalker) visitListItems(t *schema.List, lhs, rhs value.List) (errs ValidationErrors) {
+func (w *compareWalker) visitListItems(t *schema.List, lhs, rhs value.List) (errs ValidationErrors) {
 	rLen := 0
 	if rhs != nil {
 		rLen = rhs.Length()
@@ -138,10 +134,6 @@ func (w *mergingWalker) visitListItems(t *schema.List, lhs, rhs value.List) (err
 	if lhs != nil {
 		lLen = lhs.Length()
 	}
-	out := make([]interface{}, 0, int(math.Max(float64(rLen), float64(lLen))))
-
-	// TODO: ordering is totally wrong.
-	// TODO: might as well make the map order work the same way.
 
 	// This is a cheap hack to at least make the output order stable.
 	rhsOrder := make([]fieldpath.PathElement, 0, rLen)
@@ -185,15 +177,12 @@ func (w *mergingWalker) visitListItems(t *schema.List, lhs, rhs value.List) (err
 				continue
 			}
 			observedLHS.Insert(pe)
-			w2 := w.prepareDescent(t.ElementType)
+			w2 := w.prepareDescent(pe, t.ElementType)
 			w2.lhs = value.Value(child)
 			if rchild, ok := observedRHS.Get(pe); ok {
 				w2.rhs = rchild
 			}
-			errs = append(errs, w2.merge(pe.String)...)
-			if w2.out != nil {
-				out = append(out, *w2.out)
-			}
+			errs = append(errs, w2.compare()...)
 			w.finishDescent(w2)
 		}
 	}
@@ -203,24 +192,16 @@ func (w *mergingWalker) visitListItems(t *schema.List, lhs, rhs value.List) (err
 			continue
 		}
 		value, _ := observedRHS.Get(pe)
-		w2 := w.prepareDescent(t.ElementType)
+		w2 := w.prepareDescent(pe, t.ElementType)
 		w2.rhs = value
-		errs = append(errs, w2.merge(pe.String)...)
-		if w2.out != nil {
-			out = append(out, *w2.out)
-		}
+		errs = append(errs, w2.compare()...)
 		w.finishDescent(w2)
-	}
-
-	if len(out) > 0 {
-		i := interface{}(out)
-		w.out = &i
 	}
 
 	return errs
 }
 
-func (w *mergingWalker) derefList(prefix string, v value.Value, dest *value.List) (errs ValidationErrors) {
+func (w *compareWalker) derefList(prefix string, v value.Value, dest *value.List) (errs ValidationErrors) {
 	// taking dest as input so that it can be called as a one-liner with
 	// append.
 	if v == nil {
@@ -234,7 +215,7 @@ func (w *mergingWalker) derefList(prefix string, v value.Value, dest *value.List
 	return nil
 }
 
-func (w *mergingWalker) doList(t *schema.List) (errs ValidationErrors) {
+func (w *compareWalker) doList(t *schema.List) (errs ValidationErrors) {
 	var lhs, rhs value.List
 	w.derefList("lhs: ", w.lhs, &lhs)
 	w.derefList("rhs: ", w.rhs, &rhs)
@@ -248,36 +229,24 @@ func (w *mergingWalker) doList(t *schema.List) (errs ValidationErrors) {
 		w.doLeaf()
 		return nil
 	}
-
-	if lhs == nil && rhs == nil {
-		return nil
-	}
-
-	errs = w.visitListItems(t, lhs, rhs)
-
-	return errs
+	return w.visitListItems(t, lhs, rhs)
 }
 
-func (w *mergingWalker) visitMapItem(t *schema.Map, out map[string]interface{}, key string, lhs, rhs value.Value) (errs ValidationErrors) {
+func (w *compareWalker) visitMapItem(t *schema.Map, key string, lhs, rhs value.Value) (errs ValidationErrors) {
 	fieldType := t.ElementType
 	if sf, ok := t.FindField(key); ok {
 		fieldType = sf.Type
 	}
 	pe := fieldpath.PathElement{FieldName: &key}
-	w2 := w.prepareDescent(fieldType)
+	w2 := w.prepareDescent(pe, fieldType)
 	w2.lhs = lhs
 	w2.rhs = rhs
-	errs = append(errs, w2.merge(pe.String)...)
-	if w2.out != nil {
-		out[key] = *w2.out
-	}
+	errs = append(errs, w2.compare()...)
 	w.finishDescent(w2)
 	return errs
 }
 
-func (w *mergingWalker) visitMapItems(t *schema.Map, lhs, rhs value.Map) (errs ValidationErrors) {
-	out := map[string]interface{}{}
-
+func (w *compareWalker) visitMapItems(t *schema.Map, lhs, rhs value.Map) (errs ValidationErrors) {
 	if lhs != nil {
 		lhs.Iterate(func(key string, val value.Value) bool {
 			var rval value.Value
@@ -287,7 +256,7 @@ func (w *mergingWalker) visitMapItems(t *schema.Map, lhs, rhs value.Map) (errs V
 					defer rval.Recycle()
 				}
 			}
-			errs = append(errs, w.visitMapItem(t, out, key, val, rval)...)
+			errs = append(errs, w.visitMapItem(t, key, val, rval)...)
 			return true
 		})
 	}
@@ -300,19 +269,15 @@ func (w *mergingWalker) visitMapItems(t *schema.Map, lhs, rhs value.Map) (errs V
 					return true
 				}
 			}
-			errs = append(errs, w.visitMapItem(t, out, key, nil, val)...)
+			errs = append(errs, w.visitMapItem(t, key, nil, val)...)
 			return true
 		})
-	}
-	if len(out) > 0 {
-		i := interface{}(out)
-		w.out = &i
 	}
 
 	return errs
 }
 
-func (w *mergingWalker) doMap(t *schema.Map) (errs ValidationErrors) {
+func (w *compareWalker) doMap(t *schema.Map) (errs ValidationErrors) {
 	var lhs, rhs value.Map
 	w.derefMap("lhs: ", w.lhs, &lhs)
 	w.derefMap("rhs: ", w.rhs, &rhs)
@@ -331,7 +296,5 @@ func (w *mergingWalker) doMap(t *schema.Map) (errs ValidationErrors) {
 		return nil
 	}
 
-	errs = append(errs, w.visitMapItems(t, lhs, rhs)...)
-
-	return errs
+	return append(errs, w.visitMapItems(t, lhs, rhs)...)
 }
