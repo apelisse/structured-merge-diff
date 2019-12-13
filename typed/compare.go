@@ -57,11 +57,6 @@ func (w *compareWalker) compare() (errs ValidationErrors) {
 		errs = append(errs, handleAtom(arhs, w.typeRef, w)...)
 	}
 
-	if w.lhs == nil {
-		w.comparison.Added.Insert(w.path)
-	} else if w.rhs == nil {
-		w.comparison.Removed.Insert(w.path)
-	}
 	return errs
 }
 
