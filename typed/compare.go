@@ -30,6 +30,8 @@ type compareWalker struct {
 
 	comparison *Comparison
 
+	inLeaf bool
+
 	// Current path that we are merging
 	path fieldpath.Path
 
@@ -57,12 +59,21 @@ func (w *compareWalker) compare() (errs ValidationErrors) {
 		errs = append(errs, handleAtom(arhs, w.typeRef, w)...)
 	}
 
+	if !w.inLeaf {
+		if w.lhs == nil {
+			w.comparison.Added.Insert(w.path)
+		} else if w.rhs == nil {
+			w.comparison.Removed.Insert(w.path)
+		}
+	}
+
 	return errs
 }
 
 // doLeaf should be called on leaves before descending into children, if there
 // will be a descent. It modifies w.inLeaf.
 func (w *compareWalker) doLeaf() {
+	w.inLeaf = true
 	// We don't recurse into leaf fields for merging.
 	if w.lhs == nil {
 		w.comparison.Added.Insert(w.path)

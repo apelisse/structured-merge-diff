@@ -133,6 +133,7 @@ func (tv TypedValue) Compare(rhs *TypedValue) (c *Comparison, err error) {
 		mw.schema = nil
 		mw.typeRef = schema.TypeRef{}
 		mw.comparison = nil
+		mw.inLeaf = false
 		cwPool.Put(mw)
 	}()
 	mw.lhs = tv.value
